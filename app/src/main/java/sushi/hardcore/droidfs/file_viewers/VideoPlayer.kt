@@ -38,6 +38,52 @@ class VideoPlayer: MediaPlayer(true) {
     private val longPressHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var longPressRunnable: Runnable? = null
 
+    override fun viewFile() {
+        binding = ActivityVideoPlayerBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        binding.topBar.fitsSystemWindows = true
+        binding.videoPlayer.doubleTapOverlay = binding.doubleTapOverlay
+        val bottomBar = findViewById<FrameLayout>(R.id.exo_bottom_bar)
+        val progressBar = findViewById<View>(R.id.exo_progress)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.videoPlayer) { _, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            bottomBar.apply {
+                updatePadding(left = insets.left, right = insets.right, bottom = insets.bottom)
+                updateLayoutParams<FrameLayout.LayoutParams> {
+                    @SuppressLint("PrivateResource")
+                    height = resources.getDimensionPixelSize(R.dimen.exo_styled_bottom_bar_height) + insets.bottom
+                }
+            }
+            progressBar.apply {
+                updatePadding(left = insets.left, right = insets.right)
+                updateLayoutParams<FrameLayout.LayoutParams> {
+                    @SuppressLint("PrivateResource")
+                    bottomMargin = resources.getDimensionPixelSize(R.dimen.exo_styled_progress_margin_bottom) + insets.bottom
+                }
+            }
+            windowInsets
+        }
+
+        binding.videoPlayer.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
+            binding.topBar.visibility = visibility
+            if (visibility == View.VISIBLE) {
+                showPartialSystemUi()
+            } else {
+                hideSystemUi()
+            }
+        })
+        binding.rotateButton.setOnClickListener {
+            requestedOrientation =
+                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                    ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
+                } else {
+                    ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
+                }
+        }
+        setupSwipeSeek()
+        super.viewFile()
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     private fun setupSwipeSeek() {
         binding.videoPlayer.setOnTouchListener { view, event ->
@@ -50,7 +96,6 @@ class VideoPlayer: MediaPlayer(true) {
                     isSwipeSeeking = false
                     isLongPressSpeeding = false
 
-                    // 开始计时,如果在超时时间内没有移动/松手,就判定为长按加速
                     longPressRunnable = Runnable {
                         if (!isSwipeSeeking && player != null) {
                             isLongPressSpeeding = true
@@ -59,7 +104,7 @@ class VideoPlayer: MediaPlayer(true) {
                         }
                     }
                     longPressHandler.postDelayed(longPressRunnable!!, longPressTimeoutMs)
-                    false // 不消费,单击/双击照常走原来的逻辑
+                    false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.x - swipeSeekStartX
@@ -69,13 +114,12 @@ class VideoPlayer: MediaPlayer(true) {
                         abs(dx) > abs(dy)
                     ) {
                         isSwipeSeeking = true
-                        longPressRunnable?.let { longPressHandler.removeCallbacks(it) } // 开始拖动了,取消长按加速判定
+                        longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
                         binding.videoPlayer.showController()
                     }
                     if (isSwipeSeeking && player != null) {
                         val duration = player.duration
                         if (duration > 0) {
-                            // 拖满一屏宽度 = 跳转视频全长,不再封顶,长视频/短视频手感比例一致
                             val deltaMs = (dx / view.width * duration).toLong()
                             val target = (swipeSeekStartPositionMs + deltaMs).coerceIn(0, duration)
                             player.seekTo(target)
@@ -94,7 +138,7 @@ class VideoPlayer: MediaPlayer(true) {
                     }
                     isSwipeSeeking = false
                     isLongPressSpeeding = false
-                    wasSeeking || wasSpeeding // 拖动快进或者长按加速期间,消费掉UP事件,避免松手时被误判成一次点击
+                    wasSeeking || wasSpeeding
                 }
                 else -> false
             }
