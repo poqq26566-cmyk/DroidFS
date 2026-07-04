@@ -9,10 +9,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout (只拉第一层子模块,不递归)
+      - name: Checkout (完整历史,避免ffmpeg浅克隆报错)
         uses: actions/checkout@v4
         with:
           submodules: true
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
