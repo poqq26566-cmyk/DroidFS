@@ -25,8 +25,10 @@ android {
 
     kotlinOptions {
             jvmTarget = "17"
-            freeCompilerArgs += listOf("-Xskip-metadata-version-check")
+            freeCompilerArgs += ["-Xskip-metadata-version-check"]
     }
+    
+    
 
     def abiCodes  = [ "x86": 1, "x86_64": 2, "armeabi-v7a": 3, "arm64-v8a": 4]
 
