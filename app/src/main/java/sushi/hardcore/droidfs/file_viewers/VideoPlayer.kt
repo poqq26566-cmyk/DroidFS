@@ -24,57 +24,12 @@ class VideoPlayer: MediaPlayer(true) {
     private lateinit var binding: ActivityVideoPlayerBinding
 
     // 划屏快进/快退相关状态
-    private var swipeSeekStartX = 0f
-    private var swipeSeekStartY = 0f
-    private var swipeSeekStartPositionMs = 0L
-    private var isSwipeSeeking = false
-    private val swipeSeekThresholdPx by lazy { resources.displayMetrics.density * 24 } // 超过24dp才判定为拖动手势,避免跟点击冲突
-
-    override fun viewFile() {
-        binding = ActivityVideoPlayerBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        binding.topBar.fitsSystemWindows = true
-        binding.videoPlayer.doubleTapOverlay = binding.doubleTapOverlay
-        val bottomBar = findViewById<FrameLayout>(R.id.exo_bottom_bar)
-        val progressBar = findViewById<View>(R.id.exo_progress)
-        ViewCompat.setOnApplyWindowInsetsListener(binding.videoPlayer) { _, windowInsets ->
-            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            bottomBar.apply {
-                updatePadding(left = insets.left, right = insets.right, bottom = insets.bottom)
-                updateLayoutParams<FrameLayout.LayoutParams> {
-                    @SuppressLint("PrivateResource")
-                    height = resources.getDimensionPixelSize(R.dimen.exo_styled_bottom_bar_height) + insets.bottom
-                }
-            }
-            progressBar.apply {
-                updatePadding(left = insets.left, right = insets.right)
-                updateLayoutParams<FrameLayout.LayoutParams> {
-                    @SuppressLint("PrivateResource")
-                    bottomMargin = resources.getDimensionPixelSize(R.dimen.exo_styled_progress_margin_bottom) + insets.bottom
-                }
-            }
-            windowInsets
-        }
-
-        binding.videoPlayer.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
-            binding.topBar.visibility = visibility
-            if (visibility == View.VISIBLE) {
-                showPartialSystemUi()
-            } else {
-                hideSystemUi()
-            }
-        })
-        binding.rotateButton.setOnClickListener {
-            requestedOrientation =
-                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                    ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
-                } else {
-                    ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
-                }
-        }
-        setupSwipeSeek()
-        super.viewFile()
-    }
+    private var isLongPressSpeeding = false
+    private var originalPlaybackSpeed = 1f
+    private val longPressSpeedMultiplier = 3f // 长按加速倍数,想要3倍速就改成3f
+    private val longPressTimeoutMs = 350L // 按住多久判定为"长按"而不是点击,单位毫秒
+    private val longPressHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var longPressRunnable: Runnable? = null
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupSwipeSeek() {
@@ -86,6 +41,17 @@ class VideoPlayer: MediaPlayer(true) {
                     swipeSeekStartY = event.y
                     swipeSeekStartPositionMs = player?.currentPosition ?: 0L
                     isSwipeSeeking = false
+                    isLongPressSpeeding = false
+
+                    // 开始计时,如果在超时时间内没有移动/松手,就判定为长按加速
+                    longPressRunnable = Runnable {
+                        if (!isSwipeSeeking && player != null) {
+                            isLongPressSpeeding = true
+                            originalPlaybackSpeed = player.playbackParameters.speed
+                            player.setPlaybackSpeed(originalPlaybackSpeed * longPressSpeedMultiplier)
+                        }
+                    }
+                    longPressHandler.postDelayed(longPressRunnable!!, longPressTimeoutMs)
                     false // 不消费,单击/双击照常走原来的逻辑
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -93,29 +59,35 @@ class VideoPlayer: MediaPlayer(true) {
                     val dy = event.y - swipeSeekStartY
                     if (!isSwipeSeeking &&
                         abs(dx) > swipeSeekThresholdPx &&
-                        abs(dx) > abs(dy) // 横向为主才算快进手势,避免跟其他垂直手势冲突
+                        abs(dx) > abs(dy)
                     ) {
                         isSwipeSeeking = true
-                        binding.videoPlayer.showController() // 拖动时把控制条(含时间显示)唤出来
+                        longPressRunnable?.let { longPressHandler.removeCallbacks(it) } // 开始拖动了,取消长按加速判定
+                        binding.videoPlayer.showController()
                     }
                     if (isSwipeSeeking && player != null) {
                         val duration = player.duration
                         if (duration > 0) {
-                            // 拖满一屏宽度 = 跳转视频总长的1/3,但最多不超过2分钟,数值可按需调整
-                            val maxSeekRangeMs = (duration / 3).coerceAtMost(120_000L)
-                            val deltaMs = (dx / view.width * maxSeekRangeMs).toLong()
+                            // 拖满一屏宽度 = 跳转视频全长,不再封顶,长视频/短视频手感比例一致
+                            val deltaMs = (dx / view.width * duration).toLong()
                             val target = (swipeSeekStartPositionMs + deltaMs).coerceIn(0, duration)
                             player.seekTo(target)
                         }
-                        true // 拖动中消费掉事件,不让它触发单击/双击
+                        true
                     } else {
                         false
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
                     val wasSeeking = isSwipeSeeking
+                    val wasSpeeding = isLongPressSpeeding
+                    if (wasSpeeding && player != null) {
+                        player.setPlaybackSpeed(originalPlaybackSpeed)
+                    }
                     isSwipeSeeking = false
-                    wasSeeking // 如果刚才是在拖动快进,消费掉UP事件,避免松手时被误判成一次点击
+                    isLongPressSpeeding = false
+                    wasSeeking || wasSpeeding // 拖动快进或者长按加速期间,消费掉UP事件,避免松手时被误判成一次点击
                 }
                 else -> false
             }
