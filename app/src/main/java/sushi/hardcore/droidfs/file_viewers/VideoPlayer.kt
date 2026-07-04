@@ -23,11 +23,18 @@ class VideoPlayer: MediaPlayer(true) {
     }
     private lateinit var binding: ActivityVideoPlayerBinding
 
-    // 划屏快进/快退相关状态
+    // 划屏快进/快退
+    private var swipeSeekStartX = 0f
+    private var swipeSeekStartY = 0f
+    private var swipeSeekStartPositionMs = 0L
+    private var isSwipeSeeking = false
+    private val swipeSeekThresholdPx by lazy { resources.displayMetrics.density * 24 }
+
+    // 长按加速
     private var isLongPressSpeeding = false
     private var originalPlaybackSpeed = 1f
-    private val longPressSpeedMultiplier = 3f // 长按加速倍数,想要3倍速就改成3f
-    private val longPressTimeoutMs = 350L // 按住多久判定为"长按"而不是点击,单位毫秒
+    private val longPressSpeedMultiplier = 2f
+    private val longPressTimeoutMs = 350L
     private val longPressHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var longPressRunnable: Runnable? = null
 
