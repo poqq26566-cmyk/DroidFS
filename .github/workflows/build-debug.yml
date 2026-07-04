@@ -9,10 +9,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout (with submodules)
+      - name: Checkout (只拉第一层子模块,不递归)
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -29,6 +29,11 @@ jobs:
         run: |
           sdkmanager --install "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
+
+      - name: Init libgocryptfs's own submodules
+        run: |
+          cd app/libgocryptfs
+          git submodule update --init
 
       - name: Build FFmpeg
         run: |
