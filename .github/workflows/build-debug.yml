@@ -48,9 +48,8 @@ jobs:
           chmod +x build.sh
           ./build.sh
 
-      - name: Assemble debug APK (gocryptfs only, CryFS disabled)
-        run: ./gradlew assembleDebug -PdisableCryFS=true --stacktrace
-
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --stacktrace
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
