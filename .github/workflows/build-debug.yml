@@ -12,7 +12,7 @@ jobs:
       - name: Checkout (完整历史,避免ffmpeg浅克隆报错)
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
           fetch-depth: 0
 
       - name: Set up JDK 17
