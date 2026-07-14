@@ -57,9 +57,17 @@ abstract class FileViewerActivity(private val fullscreen: Boolean = false): Base
             fileViewerViewModel.filePath = intent.getStringExtra("path")!!
         }
         originalParentPath = PathUtils.getParentPath(fileViewerViewModel.filePath!!)
-        encryptedVolume = (application as VolumeManagerApp).volumeManager.getVolume(
+        val volume = (application as VolumeManagerApp).volumeManager.getVolume(
             intent.getIntExtra("volumeId", -1)
-        )!!
+        )
+        if (volume == null) {
+            // The volume is no longer open (e.g. the app process was killed in the
+            // background and this activity was re-created from Recents). There is
+            // nothing we can do here, so just close this activity instead of crashing.
+            finish()
+            return
+        }
+        encryptedVolume = volume
         finishOnClose(encryptedVolume)
         viewFile()
     }
