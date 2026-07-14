@@ -65,7 +65,8 @@ class TemporaryFileProvider : ContentProvider() {
         size: Long,
         volumeId: Int
     ): Uri? {
-        if (!encryptedFileProvider.exportFile(exportedFile, volumeManager.getVolume(volumeId)!!)) {
+        val volume = volumeManager.getVolume(volumeId) ?: return null
+        if (!encryptedFileProvider.exportFile(exportedFile, volume)) {
             return null
         }
         return Uri.withAppendedPath(BASE_URI, UUID.randomUUID().toString()).also {
