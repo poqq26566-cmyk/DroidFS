@@ -8,6 +8,10 @@ import android.view.MenuItem
 import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.addCallback
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import sushi.hardcore.droidfs.R
 import sushi.hardcore.droidfs.widgets.CustomAlertDialogBuilder
 import java.io.File
@@ -17,6 +21,7 @@ class TextEditor: FileViewerActivity() {
     private lateinit var editor: EditText
     private var changedSinceLastSave = false
     private var wordWrap = true
+    private var isSaving = false
 
     override fun getFileType(): String {
         return "text"
@@ -64,24 +69,32 @@ class TextEditor: FileViewerActivity() {
             }
         })
     }
-    private fun save(): Boolean{
-        var success = false
+    private fun save(onComplete: (Boolean) -> Unit) {
+        if (isSaving) return
+        isSaving = true
         val content = editor.text.toString().toByteArray()
-        val fileHandle = encryptedVolume.openFileWriteMode(fileViewerViewModel.filePath!!)
-        if (fileHandle != -1L) {
-            var offset: Long = 0
-            while (offset < content.size && encryptedVolume.write(fileHandle, offset, content, offset, content.size.toLong()).also { offset += it } > 0) {}
-            if (offset == content.size.toLong()){
-                success = encryptedVolume.truncate(fileViewerViewModel.filePath!!, offset)
+        lifecycleScope.launch {
+            val success = withContext(Dispatchers.IO) {
+                var success = false
+                val fileHandle = encryptedVolume.openFileWriteMode(fileViewerViewModel.filePath!!)
+                if (fileHandle != -1L) {
+                    var offset: Long = 0
+                    while (offset < content.size && encryptedVolume.write(fileHandle, offset, content, offset, content.size.toLong()).also { offset += it } > 0) {}
+                    if (offset == content.size.toLong()){
+                        success = encryptedVolume.truncate(fileViewerViewModel.filePath!!, offset)
+                    }
+                    encryptedVolume.closeFile(fileHandle)
+                }
+                success
             }
-            encryptedVolume.closeFile(fileHandle)
+            isSaving = false
+            if (success){
+                Toast.makeText(this@TextEditor, getString(R.string.file_saved), Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this@TextEditor, getString(R.string.save_failed), Toast.LENGTH_SHORT).show()
+            }
+            onComplete(success)
         }
-        if (success){
-            Toast.makeText(this, getString(R.string.file_saved), Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, getString(R.string.save_failed), Toast.LENGTH_SHORT).show()
-        }
-        return success
     }
 
     private fun checkSaveAndExit(){
@@ -90,8 +103,10 @@ class TextEditor: FileViewerActivity() {
                 .setTitle(R.string.warning)
                 .setMessage(R.string.ask_save)
                 .setPositiveButton(R.string.save) { _, _ ->
-                    if (save()){
-                        goBackToExplorer()
+                    save { success ->
+                        if (success){
+                            goBackToExplorer()
+                        }
                     }
                 }
                 .setNegativeButton(R.string.discard){ _, _ -> goBackToExplorer()}
@@ -113,9 +128,11 @@ class TextEditor: FileViewerActivity() {
                 checkSaveAndExit()
             }
             R.id.menu_save -> {
-                if (save()){
-                    changedSinceLastSave = false
-                    title = fileName
+                save { success ->
+                    if (success){
+                        changedSinceLastSave = false
+                        title = fileName
+                    }
                 }
             }
             R.id.word_wrap -> {
